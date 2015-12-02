@@ -105,21 +105,39 @@ getMissionSize numPlayers roundIndex = error $ "Fatal: illegal (mission size)-ro
 startingKingIndex :: Int -> Int -> Int
 startingKingIndex numPlayers roundIndex = roundIndex * numMissions `mod` numPlayers
 
+-- | `and`, but allowing one `False`
+and' :: [Bool] -> Bool
+and' = (<= 1) . count False
+
+-- | Takes in number of players and round index, respectively
+isDoubleFailMission :: Int -> Int -> Bool
+isDoubleFailMission 5 _ = False
+isDoubleFailMission 6 _ = False
+isDoubleFailMission 7 4 = True
+isDoubleFailMission 7 _ = False
+isDoubleFailMission 8 4 = True
+isDoubleFailMission 8 _ = False
+isDoubleFailMission 9 4 = True
+isDoubleFailMission 9 _ = False
+isDoubleFailMission 10 4 = True
+isDoubleFailMission 10 _ = False
+isDoubleFailMission numPlayers roundIndex = error $ "Fatal: illegal (mission size)-round pairing: " ++ (show (numPlayers, roundIndex))
+
 -- | Under the arbitrary team selection meta, determines whether `teamSelection` made by
 -- king `kingIndex` with the seating arrangement `seating` yields a team of all Good
 -- (returns Nothing if teamSelection doesn't contain kingIndex, to signify that this
 -- isn't even a case to consider)
-isGoodTeamArbitraryMeta :: Seating -> Int -> [Int] -> Maybe Bool
-isGoodTeamArbitraryMeta seating kingIndex teamSelection
+isGoodTeamArbitraryMeta :: Seating -> Bool -> Int -> [Int] -> Maybe Bool
+isGoodTeamArbitraryMeta seating isDoubleFail kingIndex teamSelection
     | not (kingIndex `elem` teamSelection) = Nothing
-    | otherwise = Just . and . map (seating !!) $ teamSelection
+    | otherwise = Just . (if isDoubleFail then and' else and) . map (seating !!) $ teamSelection
 
 -- | Under the two-to-the-left team selection meta, determines whether the team of size
 -- `missionSize` made by king `kingIndex` with the seating arrangement `seating` yields
 -- a team of all Good
-isGoodTeamTwoToLeftMeta :: Seating -> Int -> Int -> Bool
-isGoodTeamTwoToLeftMeta seating missionSize kingIndex
-    = and
+isGoodTeamTwoToLeftMeta :: Seating -> Int -> Bool -> Int -> Bool
+isGoodTeamTwoToLeftMeta seating missionSize isDoubleFail kingIndex
+    = (if isDoubleFail then and' else and)
     . take missionSize
     . drop kingIndex
     $ (seating ++ seating)
@@ -132,7 +150,7 @@ isGoodTeamTwoToLeftMeta seating missionSize kingIndex
 goodTeamRatioInRoundTwoToLeftMeta :: Int -> Seating -> Int -> GoodTeamRatio
 goodTeamRatioInRoundTwoToLeftMeta numPlayers seating roundIndex
     =  (\l -> GoodTeamRatio (count True l) (length l))
-    . map (isGoodTeamTwoToLeftMeta seating (getMissionSize numPlayers roundIndex))
+    . map (isGoodTeamTwoToLeftMeta seating (getMissionSize numPlayers roundIndex) (isDoubleFailMission numPlayers roundIndex))
     . filter ((seating ++ seating) !!) -- we're concerned with how well this meta performs for the Good team, so we only consider proposals by Good members
     $ [kingIndex .. (kingIndex + numMissionProposals - 1)] -- inclusive => -1
     where
@@ -149,7 +167,7 @@ goodTeamRatioInRoundArbitaryMeta :: Int -> Seating -> Int -> GoodTeamRatio
 goodTeamRatioInRoundArbitaryMeta numPlayers seating roundIndex
     = (\l -> GoodTeamRatio (count True l) (length l))
     . catMaybes
-    $ (isGoodTeamArbitraryMeta seating)
+    $ (isGoodTeamArbitraryMeta seating (isDoubleFailMission numPlayers roundIndex))
         <$> kingIndices
         <*> teamSelections
     where
